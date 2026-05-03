@@ -1,13 +1,13 @@
 function ScheduleTab() {
   return (
-    <div className="schedule-tabs" role="tablist" aria-label="스케줄 보기 방식">
-      <button className="schedule-tab active" type="button" role="tab">
+    <nav className="schedule-tabs" aria-label="스케줄 보기 방식">
+      <label className="schedule-tab weekly-tab" htmlFor="schedule-weekly">
         주간
-      </button>
-      <button className="schedule-tab" type="button" role="tab">
+      </label>
+      <label className="schedule-tab monthly-tab" htmlFor="schedule-monthly">
         월간
-      </button>
-    </div>
+      </label>
+    </nav>
   )
 }
 
