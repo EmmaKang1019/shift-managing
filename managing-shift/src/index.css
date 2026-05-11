@@ -30,9 +30,11 @@
 }
 
 body {
+  width: 100%;
   min-width: 320px;
   min-height: 100svh;
   margin: 0;
+  overflow-x: hidden;
 }
 
 button,
@@ -56,5 +58,7 @@ dd {
 }
 
 #root {
+  width: 100%;
   min-height: 100svh;
+  overflow-x: hidden;
 }

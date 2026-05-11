@@ -1,111 +1,66 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useMonthlySchedule } from '../hooks/useMonthlySchedule'
 
-const staff = [
-  { name: '김민지', position: '오픈' },
-  { name: '박준호', position: '미들' },
-  { name: '이서연', position: '서버' },
-  { name: '정하린', position: '주방' },
-  { name: '최도윤', position: '마감' },
-]
+const weekdays = ['일', '월', '화', '수', '목', '금', '토']
 
-function getShifts(count, offset = 0) {
-  return staff.slice(0, count).map((person, index) => {
-    const position = staff[(index + offset) % staff.length].position
-
-    return {
-      ...person,
-      position,
-    }
-  })
+function formatMonthTitle(year, monthIndex) {
+  return `${year}년 ${monthIndex + 1}월`
 }
 
-const monthCells = [
-  { day: 27, muted: true, shifts: [] },
-  { day: 28, muted: true, shifts: [] },
-  { day: 29, muted: true, shifts: [] },
-  { day: 30, muted: true, shifts: [] },
-  { day: 1, shifts: getShifts(4, 0) },
-  { day: 2, shifts: getShifts(4, 1) },
-  { day: 3, shifts: getShifts(4, 2) },
-  { day: 4, shifts: getShifts(5, 0) },
-  { day: 5, shifts: getShifts(5, 1) },
-  { day: 6, shifts: getShifts(4, 2) },
-  { day: 7, shifts: getShifts(5, 3) },
-  { day: 8, shifts: getShifts(5, 4) },
-  { day: 9, shifts: getShifts(4, 0) },
-  { day: 10, shifts: getShifts(5, 1) },
-  { day: 11, shifts: getShifts(5, 2) },
-  { day: 12, shifts: getShifts(4, 3) },
-  { day: 13, shifts: getShifts(5, 4) },
-  { day: 14, shifts: getShifts(5, 0) },
-  { day: 15, shifts: getShifts(4, 1) },
-  { day: 16, shifts: getShifts(5, 2) },
-  { day: 17, shifts: getShifts(5, 3) },
-  { day: 18, shifts: getShifts(4, 4) },
-  { day: 19, shifts: getShifts(5, 0) },
-  { day: 20, shifts: getShifts(5, 1) },
-  { day: 21, shifts: getShifts(4, 2) },
-  { day: 22, shifts: getShifts(5, 3) },
-  { day: 23, shifts: getShifts(5, 4) },
-  { day: 24, shifts: getShifts(4, 0) },
-  { day: 25, shifts: getShifts(5, 1) },
-  { day: 26, shifts: getShifts(5, 2) },
-  { day: 27, shifts: getShifts(4, 3) },
-  { day: 28, shifts: getShifts(5, 4) },
-  { day: 29, shifts: getShifts(5, 0) },
-  { day: 30, shifts: getShifts(4, 1) },
-  { day: 31, shifts: getShifts(5, 2) },
-]
+function formatDayTitle(date) {
+  const nextDate = new Date(`${date}T00:00:00`)
+  return `${nextDate.getMonth() + 1}월 ${nextDate.getDate()}일 근무`
+}
 
-const initialSelectedDay = monthCells.find((cell) => cell.day === 4 && !cell.muted)
+function MonthlySchedule({ initialYear = 2026, initialMonthIndex = 4 }) {
+  const [selectedDate, setSelectedDate] = useState(
+    `${initialYear}-${String(initialMonthIndex + 1).padStart(2, '0')}-04`,
+  )
+  const { calendarDays, range, shiftsByDate, status } = useMonthlySchedule(initialYear, initialMonthIndex)
 
-function MonthlySchedule() {
-  const [selectedDay, setSelectedDay] = useState(initialSelectedDay)
+  const selectedShifts = useMemo(() => shiftsByDate.get(selectedDate) ?? [], [selectedDate, shiftsByDate])
 
   return (
     <section className="monthly-schedule" aria-labelledby="monthly-title">
       <div className="section-header">
         <div>
           <p className="section-kicker">Monthly</p>
-          <h2 id="monthly-title">2026년 5월</h2>
+          <h2 id="monthly-title">{formatMonthTitle(initialYear, initialMonthIndex)}</h2>
         </div>
-        <p className="section-meta">일자를 선택하면 근무자를 확인할 수 있습니다</p>
+        <p className="section-meta">
+          {range.from} - {range.to}
+          {status === 'sample' ? ' · 샘플 표시 중' : ''}
+        </p>
       </div>
 
       <div className="month-weekdays" aria-hidden="true">
-        <span>월</span>
-        <span>화</span>
-        <span>수</span>
-        <span>목</span>
-        <span>금</span>
-        <span>토</span>
-        <span>일</span>
+        {weekdays.map((weekday) => (
+          <span key={weekday}>{weekday}</span>
+        ))}
       </div>
 
       <div className="month-grid">
-        {monthCells.map((cell, index) => {
-          const isSelected = selectedDay?.day === cell.day && !cell.muted
+        {calendarDays.map((calendarDay) => {
+          if (calendarDay.type === 'spacer') {
+            return <span className="month-cell muted" key={calendarDay.key} aria-hidden="true" />
+          }
+
+          const isSelected = calendarDay.date === selectedDate
 
           return (
             <button
-              className={`month-cell ${cell.muted ? 'muted' : ''} ${
-                isSelected ? 'selected' : ''
-              }`}
-              data-date={cell.muted ? `2026-04-${cell.day}` : `2026-05-${cell.day}`}
-              disabled={cell.muted}
-              key={`${cell.muted ? 'prev' : 'may'}-${cell.day}-${index}`}
-              onClick={() => setSelectedDay(cell)}
+              className={['month-cell', isSelected ? 'selected' : ''].filter(Boolean).join(' ')}
+              data-date={calendarDay.date}
+              key={calendarDay.date}
               type="button"
+              onClick={() => setSelectedDate(calendarDay.date)}
             >
-              <strong>{cell.day}</strong>
-              {cell.shifts.length > 0 && <small>{cell.shifts.length}명</small>}
+              <strong>{calendarDay.day}</strong>
+              <small>{calendarDay.shifts.length}명</small>
               <div className="month-worker-list" aria-hidden="true">
-                {cell.shifts.map((shift) => (
-                  <span
-                    className={shift.name.length > 3 ? 'wide-name' : ''}
-                    key={`${cell.day}-${shift.name}`}
-                  >
-                    {shift.name}
+                {calendarDay.shifts.slice(0, 6).map((shift) => (
+                  <span className={shift.employeeName.length > 4 ? 'wide-name' : ''} key={shift.shiftId}>
+                    {shift.employeeName}
                   </span>
                 ))}
               </div>
@@ -114,22 +69,23 @@ function MonthlySchedule() {
         })}
       </div>
 
-      {selectedDay && (
-        <section className="month-day-detail" aria-live="polite">
-          <div className="month-day-detail-header">
-            <strong>5월 {selectedDay.day}일 근무</strong>
-            <span>{selectedDay.shifts.length}명</span>
-          </div>
-          <div className="month-day-detail-list">
-            {selectedDay.shifts.map((shift) => (
-              <article className="month-day-worker" key={shift.name}>
-                <strong>{shift.name}</strong>
-                <span>{shift.position}</span>
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
+      <section className="month-day-detail" aria-label="선택 날짜 근무 상세">
+        <div className="month-day-detail-header">
+          <strong>{formatDayTitle(selectedDate)}</strong>
+          <span>{selectedShifts.length}명</span>
+        </div>
+        <div className="month-day-detail-list">
+          {selectedShifts.length === 0 && <p className="empty-shift">등록된 근무가 없습니다.</p>}
+          {selectedShifts.map((shift) => (
+            <article className="month-day-worker" key={shift.shiftId}>
+              <strong>{shift.employeeName}</strong>
+              <span>
+                {shift.startTime}-{shift.endTime}
+              </span>
+            </article>
+          ))}
+        </div>
+      </section>
     </section>
   )
 }

@@ -1,149 +1,236 @@
+import { useMemo, useRef, useState } from 'react'
+import { useMonthlySchedule } from '../hooks/useMonthlySchedule'
+import ManagerRulesPanel from './ManagerRulesPanel'
+import ManagerSchedulePanel from './ManagerSchedulePanel'
+import ManagerStaffPanel from './ManagerStaffPanel'
+
+const year = 2026
+const monthNames = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월']
+const weekdayOptions = ['월', '화', '수', '목', '금', '토', '일']
+const timeOptions = ['08:00', '09:00', '10:00', '12:00', '14:00', '16:00', '18:00', '22:00']
+const positionOptions = ['오픈', '미들', '서빙', '주방', '마감', '교육']
+const placeOptions = ['카운터', '홀', '주방', '관리', '테라스']
+const teamByRole = {
+  오픈: '운영팀',
+  미들: '운영팀',
+  서빙: '홀팀',
+  주방: '주방팀',
+  마감: '운영팀',
+  교육: '교육팀',
+}
+const employeeStatuses = {
+  active: '재직',
+  inactive: '퇴사',
+}
+const sampleEmployeeStatus = {
+  5: 'inactive',
+}
+
+function toDateKey(monthIndex, day) {
+  return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+function parseDay(dateKey) {
+  return Number(dateKey.split('-')[2])
+}
+
+function getUniqueWorkers(shifts) {
+  const workerMap = new Map()
+
+  shifts.forEach((shift) => {
+    if (!workerMap.has(shift.employeeId)) {
+      workerMap.set(shift.employeeId, shift)
+    }
+  })
+
+  return Array.from(workerMap.values())
+}
+
 function ManagerShiftSettings() {
+  const [activeMonth, setActiveMonth] = useState(4)
+  const [selectedDate, setSelectedDate] = useState(toDateKey(4, 4))
+  const [selectedShiftId, setSelectedShiftId] = useState(null)
+  const [activeManagerTab, setActiveManagerTab] = useState('schedule')
+  const [selectedRuleEmployeeId, setSelectedRuleEmployeeId] = useState(null)
+  const [mobileTransition, setMobileTransition] = useState(null)
+  const touchStartX = useRef(null)
+
+  const { calendarDays, range, shifts, shiftsByDate, status } = useMonthlySchedule(year, activeMonth)
+  const workingShifts = shiftsByDate.get(selectedDate) ?? []
+  const workers = useMemo(() => getUniqueWorkers(shifts), [shifts])
+  const employeeDirectory = useMemo(
+    () =>
+      workers.map((worker) => ({
+        ...worker,
+        status: sampleEmployeeStatus[worker.employeeId] ?? 'active',
+      })),
+    [workers],
+  )
+  const activeEmployees = employeeDirectory.filter((worker) => worker.status === 'active')
+  const activeEmployeeIds = new Set(activeEmployees.map((worker) => worker.employeeId))
+  const visibleWorkingShifts = workingShifts.filter((shift) => activeEmployeeIds.has(shift.employeeId))
+  const selectedShift = visibleWorkingShifts.find((shift) => shift.shiftId === selectedShiftId) ?? visibleWorkingShifts[0]
+  const selectedRuleEmployee =
+    activeEmployees.find((worker) => worker.employeeId === selectedRuleEmployeeId) ?? activeEmployees[0]
+
+  const selectDate = (date) => {
+    const nextShifts = shiftsByDate.get(date) ?? []
+    const nextVisibleShifts = nextShifts.filter((shift) => activeEmployeeIds.has(shift.employeeId))
+    setSelectedDate(date)
+    setSelectedShiftId(nextVisibleShifts[0]?.shiftId ?? null)
+  }
+
+  const goToMonth = (monthIndex) => {
+    const nextMonth = monthIndex < 0 ? 11 : monthIndex > 11 ? 0 : monthIndex
+    const currentDay = parseDay(selectedDate)
+    const daysInMonth = new Date(year, nextMonth + 1, 0).getDate()
+    const nextDate = toDateKey(nextMonth, Math.min(currentDay, daysInMonth))
+
+    setActiveMonth(nextMonth)
+    setSelectedDate(nextDate)
+    setSelectedShiftId(null)
+  }
+
+  const handleTouchStart = (event) => {
+    if (!mobileTransition) {
+      touchStartX.current = event.touches[0].clientX
+    }
+  }
+
+  const handleTouchEnd = (event) => {
+    if (touchStartX.current === null || mobileTransition) {
+      return
+    }
+
+    const swipeDistance = event.changedTouches[0].clientX - touchStartX.current
+    touchStartX.current = null
+
+    if (Math.abs(swipeDistance) < 45) {
+      return
+    }
+
+    const direction = swipeDistance < 0 ? 'next' : 'prev'
+    const targetMonth =
+      direction === 'next'
+        ? activeMonth === 11
+          ? 0
+          : activeMonth + 1
+        : activeMonth === 0
+          ? 11
+          : activeMonth - 1
+
+    setMobileTransition({ direction, targetMonth })
+  }
+
+  const finishMobileTransition = () => {
+    if (mobileTransition) {
+      goToMonth(mobileTransition.targetMonth)
+      setMobileTransition(null)
+    }
+  }
+
   return (
     <main className="manager-shift-screen">
       <header className="manager-shift-hero">
         <div>
           <p className="section-kicker">CEO Only</p>
-          <h1>쉬프트 조정</h1>
-          <p>직원별 근무일, 포지션, 시간, 팀, 메모를 변경하는 화면입니다.</p>
+          <h1>시프트 조정</h1>
+          <p>월별 스케줄을 전체로 확인하고, 선택한 날짜의 근무자를 바로 조정합니다.</p>
         </div>
         <a className="ghost-button link-button" href="/">
           스케줄로 돌아가기
         </a>
       </header>
 
-      <section className="manager-shift-layout" aria-label="쉬프트 조정 화면">
-        <aside className="manager-shift-sidebar">
-          <div className="manager-shift-sidebar-header">
-            <strong>이번 주</strong>
-            <span>2026.05.04 - 05.10</span>
-          </div>
+      <datalist id="manager-staff-options">
+        {activeEmployees.map((worker) => (
+          <option key={worker.employeeId} value={worker.employeeName} />
+        ))}
+      </datalist>
+      <datalist id="manager-position-options">
+        {positionOptions.map((position) => (
+          <option key={position} value={position} />
+        ))}
+      </datalist>
+      <datalist id="manager-place-options">
+        {placeOptions.map((place) => (
+          <option key={place} value={place} />
+        ))}
+      </datalist>
+      <datalist id="manager-time-options">
+        {timeOptions.map((time) => (
+          <option key={time} value={time} />
+        ))}
+      </datalist>
+      <datalist id="manager-weekday-options">
+        {weekdayOptions.map((weekday) => (
+          <option key={weekday} value={weekday} />
+        ))}
+      </datalist>
 
-          <button className="manager-day-item is-selected" type="button">
-            <span>월 5.4</span>
-            <strong>5명</strong>
-          </button>
-          <button className="manager-day-item" type="button">
-            <span>화 5.5</span>
-            <strong>5명</strong>
-          </button>
-          <button className="manager-day-item" type="button">
-            <span>수 5.6</span>
-            <strong>5명</strong>
-          </button>
-          <button className="manager-day-item" type="button">
-            <span>목 5.7</span>
-            <strong>5명</strong>
-          </button>
-          <button className="manager-day-item" type="button">
-            <span>금 5.8</span>
-            <strong>5명</strong>
-          </button>
-          <button className="manager-day-item" type="button">
-            <span>토 5.9</span>
-            <strong>5명</strong>
-          </button>
-          <button className="manager-day-item" type="button">
-            <span>일 5.10</span>
-            <strong>5명</strong>
-          </button>
-        </aside>
+      <nav className="manager-work-tabs" aria-label="관리 메뉴">
+        <button
+          className={activeManagerTab === 'schedule' ? 'is-active' : ''}
+          type="button"
+          onClick={() => setActiveManagerTab('schedule')}
+        >
+          근무 일정
+        </button>
+        <button
+          className={activeManagerTab === 'staff' ? 'is-active' : ''}
+          type="button"
+          onClick={() => setActiveManagerTab('staff')}
+        >
+          직원 관리
+        </button>
+        <button
+          className={activeManagerTab === 'rules' ? 'is-active' : ''}
+          type="button"
+          onClick={() => setActiveManagerTab('rules')}
+        >
+          고정 근무
+        </button>
+      </nav>
 
-        <section className="manager-shift-editor">
-          <div className="manager-editor-header">
-            <div>
-              <p className="section-kicker">Selected Day</p>
-              <h2>월요일 5.4</h2>
-            </div>
-            <span>5명 근무</span>
-          </div>
+      {activeManagerTab === 'schedule' && (
+        <ManagerSchedulePanel
+          activeMonth={activeMonth}
+          calendarDays={calendarDays}
+          monthNames={monthNames}
+          mobileTransition={mobileTransition}
+          onAnimationEnd={finishMobileTransition}
+          onMonthChange={goToMonth}
+          onSelectDate={selectDate}
+          onSelectShift={setSelectedShiftId}
+          onTouchEnd={handleTouchEnd}
+          onTouchStart={handleTouchStart}
+          range={range}
+          selectedDate={selectedDate}
+          selectedShift={selectedShift}
+          status={status}
+          visibleWorkingShifts={visibleWorkingShifts}
+          year={year}
+        />
+      )}
 
-          <div className="manager-shift-table">
-            <div className="manager-shift-row manager-shift-row-head">
-              <span>직원</span>
-              <span>포지션</span>
-              <span>시간</span>
-              <span>팀</span>
-              <span>메모</span>
-            </div>
+      {activeManagerTab === 'staff' && (
+        <ManagerStaffPanel
+          employeeDirectory={employeeDirectory}
+          employeeStatuses={employeeStatuses}
+          placeOptions={placeOptions}
+          positionOptions={positionOptions}
+          teamByRole={teamByRole}
+          timeOptions={timeOptions}
+        />
+      )}
 
-            <div className="manager-shift-row">
-              <strong>김민지</strong>
-              <select defaultValue="open">
-                <option value="open">오픈</option>
-                <option value="middle">미들</option>
-                <option value="server">서버</option>
-                <option value="kitchen">주방</option>
-                <option value="close">마감</option>
-              </select>
-              <div className="manager-time-pair">
-                <input type="time" defaultValue="08:00" />
-                <input type="time" defaultValue="14:00" />
-              </div>
-              <select defaultValue="counter">
-                <option value="counter">카운터</option>
-                <option value="hall">홀</option>
-                <option value="kitchen">주방</option>
-                <option value="manage">관리</option>
-              </select>
-              <input type="text" defaultValue="오픈 준비 및 재고 확인" />
-            </div>
-
-            <div className="manager-shift-row">
-              <strong>박준호</strong>
-              <select defaultValue="middle">
-                <option value="open">오픈</option>
-                <option value="middle">미들</option>
-                <option value="server">서버</option>
-                <option value="kitchen">주방</option>
-                <option value="close">마감</option>
-              </select>
-              <div className="manager-time-pair">
-                <input type="time" defaultValue="10:00" />
-                <input type="time" defaultValue="16:00" />
-              </div>
-              <select defaultValue="hall">
-                <option value="counter">카운터</option>
-                <option value="hall">홀</option>
-                <option value="kitchen">주방</option>
-                <option value="manage">관리</option>
-              </select>
-              <input type="text" defaultValue="점심 피크 운영 지원" />
-            </div>
-
-            <div className="manager-shift-row">
-              <strong>이서연</strong>
-              <select defaultValue="server">
-                <option value="open">오픈</option>
-                <option value="middle">미들</option>
-                <option value="server">서버</option>
-                <option value="kitchen">주방</option>
-                <option value="close">마감</option>
-              </select>
-              <div className="manager-time-pair">
-                <input type="time" defaultValue="12:00" />
-                <input type="time" defaultValue="18:00" />
-              </div>
-              <select defaultValue="hall">
-                <option value="counter">카운터</option>
-                <option value="hall">홀</option>
-                <option value="kitchen">주방</option>
-                <option value="manage">관리</option>
-              </select>
-              <input type="text" defaultValue="홀 응대 및 테이블 관리" />
-            </div>
-          </div>
-
-          <div className="manager-editor-actions">
-            <button className="ghost-button" type="button">
-              변경 취소
-            </button>
-            <button className="primary-button" type="button">
-              변경 저장
-            </button>
-          </div>
-        </section>
-      </section>
+      {activeManagerTab === 'rules' && (
+        <ManagerRulesPanel
+          activeEmployees={activeEmployees}
+          onSelectRuleEmployee={setSelectedRuleEmployeeId}
+          selectedRuleEmployee={selectedRuleEmployee}
+        />
+      )}
     </main>
   )
 }
